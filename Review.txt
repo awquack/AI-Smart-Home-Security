@@ -1,0 +1,63 @@
+# AI Smart Home Security
+
+An AI-powered home security system that detects motion using computer vision techniques.  
+The system analyzes video streams, identifies movement, and visualizes activity using heatmaps.
+
+## Features
+
+- Motion detection using OpenCV
+- Enhanced motion tracking
+- Motion heatmap visualization
+- Persistent detection boxes
+- Real-time video processing
+
+## Project Structure
+
+AI-Smart-Home-Security
+│
+├── src/
+├── motion_detection_clean.py
+├── motion_detection_enhanced.py
+├── motion_heatmap.py
+├── sprint1_demo_persistent.py
+├── requirements.txt
+└── README.md
+
+## Requirements
+
+Install dependencies using:
+
+pip install -r requirements.txt
+
+Main libraries used:
+
+- OpenCV
+- NumPy
+- Matplotlib
+- Imutils
+
+## How to Run
+
+Run motion detection:
+
+python motion_detection_clean.py
+
+Run enhanced detection:
+
+python motion_detection_enhanced.py
+
+Generate heatmap:
+
+python motion_heatmap.py
+
+## Future Improvements
+
+- Face recognition
+- AI object detection
+- Smart alerts (email/phone)
+- Mobile dashboard
+- Cloud integration
+
+## Author
+
+Developed for AI Smart Home Security research project.
