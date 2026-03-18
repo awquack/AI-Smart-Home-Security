@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Events – AI Security{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ──────────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0 fw-bold">
+      <i class="fa-solid fa-list me-2" style="color:#58a6ff;"></i>Event Log
+    </h4>
+    <small class="text-secondary">All security events · auto-refreshes every 5 s</small>
+  </div>
+  <span class="badge bg-secondary fs-6 px-3 py-2" id="event-count">
+    {{ events | length }} events
+  </span>
+</div>
+
+<!-- ── Filter bar ────────────────────────────────────────────────────────────── -->
+<div class="mb-3 d-flex flex-wrap gap-2">
+  <button class="btn btn-sm filter-btn {% if filter_type=='all' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+          data-type="all">All</button>
+  <button class="btn btn-sm filter-btn {% if filter_type=='motion' %}btn-warning{% else %}btn-outline-secondary{% endif %}"
+          data-type="motion">
+    <i class="fa-solid fa-person-running me-1"></i>Motion
+    <span class="badge bg-dark ms-1">{{ counts.get('motion',0) }}</span>
+  </button>
+  <button class="btn btn-sm filter-btn {% if filter_type=='audio' %}btn-info{% else %}btn-outline-secondary{% endif %}"
+          data-type="audio">
+    <i class="fa-solid fa-microphone me-1"></i>Audio
+    <span class="badge bg-dark ms-1">{{ counts.get('audio',0) }}</span>
+  </button>
+  <button class="btn btn-sm filter-btn {% if filter_type=='yolo' %}btn-secondary{% else %}btn-outline-secondary{% endif %}"
+          data-type="yolo" style="{% if filter_type=='yolo' %}background:#8b5cf6;border-color:#8b5cf6;{% endif %}">
+    <i class="fa-solid fa-eye me-1"></i>YOLO
+    <span class="badge bg-dark ms-1">{{ counts.get('yolo',0) }}</span>
+  </button>
+  <button class="btn btn-sm filter-btn {% if filter_type=='high_confidence' %}btn-danger{% else %}btn-outline-secondary{% endif %}"
+          data-type="high_confidence">
+    <i class="fa-solid fa-triangle-exclamation me-1"></i>High Confidence
+    <span class="badge bg-dark ms-1">{{ counts.get('high_confidence',0) }}</span>
+  </button>
+</div>
+
+<!-- ── Events table ──────────────────────────────────────────────────────────── -->
+<div class="stat-card p-0 overflow-hidden">
+  <table class="table table-hover mb-0" id="events-table">
+    <thead style="background:#1f2937;">
+      <tr>
+        <th class="ps-3">#</th>
+        <th>Time</th>
+        <th>Type</th>
+        <th>Label / Detail</th>
+        <th>Snapshot</th>
+      </tr>
+    </thead>
+    <tbody id="events-tbody">
+      {% for ev in events %}
+      <tr onclick="showSnapshot('{{ ev.snapshot_path or '' }}', '{{ ev.event_type }}', '{{ ev.timestamp }}')"
+          title="Click to view snapshot">
+        <td class="ps-3 text-secondary">{{ ev.id }}</td>
+        <td style="font-size:.85rem; white-space:nowrap;">{{ ev.timestamp }}</td>
+        <td>
+          <span class="badge badge-{{ ev.event_type }}">{{ ev.event_type }}</span>
+        </td>
+        <td style="font-size:.85rem; max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          {{ ev.label or '—' }}
+        </td>
+        <td>
+          {% if ev.snapshot_path %}
+            <i class="fa-solid fa-image text-success" title="{{ ev.snapshot_path }}"></i>
+          {% else %}
+            <i class="fa-solid fa-ban text-secondary"></i>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr id="empty-row">
+        <td colspan="5" class="text-center text-secondary py-5">
+          <i class="fa-solid fa-database me-2"></i>No events yet.
+          Run <code>sprint3_main.py</code> to start detecting.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── Snapshot modal (Bootstrap 5 Modal) ────────────────────────────────────── -->
+<!-- Clicking a table row triggers showSnapshot() which populates and opens this modal -->
+<div class="modal fade" id="snapModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="background:#161b22; border:1px solid #30363d;">
+      <div class="modal-header" style="border-bottom:1px solid #30363d;">
+        <h5 class="modal-title">
+          <i class="fa-solid fa-image me-2 text-secondary"></i>
+          <span id="modal-title">Snapshot</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white"
+                data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p id="modal-meta" class="text-secondary small mb-3"></p>
+        <img id="snapImg" src="" alt="Snapshot" />
+        <p id="no-snap-msg" class="text-secondary mt-3" style="display:none;">
+          <i class="fa-solid fa-ban me-2"></i>No snapshot saved for this event.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+const snapModal = new bootstrap.Modal(document.getElementById('snapModal'));
+
+// ── Open snapshot modal ──────────────────────────────────────────────────────
+function showSnapshot(path, type, ts) {
+  document.getElementById("modal-title").textContent = type.toUpperCase() + " EVENT";
+  document.getElementById("modal-meta").textContent  = ts;
+  const img    = document.getElementById("snapImg");
+  const noSnap = document.getElementById("no-snap-msg");
+
+  if (path) {
+    // Extract just the filename from the full path
+    const filename = path.replace(/\\/g, "/").split("/").pop();
+    img.src        = "/snapshot/" + filename;
+    img.style.display  = "block";
+    noSnap.style.display = "none";
+  } else {
+    img.src = "";
+    img.style.display  = "none";
+    noSnap.style.display = "block";
+  }
+  snapModal.show();
+}
+
+// ── Filter buttons ────────────────────────────────────────────────────────────
+// Re-fetches from /api/events with the chosen type filter
+document.querySelectorAll(".filter-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const type = btn.dataset.type;
+    fetchEvents(type);
+    // Update active button state
+    document.querySelectorAll(".filter-btn").forEach(b => {
+      b.classList.remove("btn-primary","btn-warning","btn-info","btn-danger");
+      b.classList.add("btn-outline-secondary");
+    });
+    btn.classList.remove("btn-outline-secondary");
+    const colorMap = {
+      all:"btn-primary", motion:"btn-warning", audio:"btn-info",
+      yolo:"btn-secondary", high_confidence:"btn-danger"
+    };
+    btn.classList.add(colorMap[type] || "btn-primary");
+  });
+});
+
+// ── Fetch events and re-render tbody ─────────────────────────────────────────
+let currentFilter = "{{ filter_type }}";
+
+function fetchEvents(type) {
+  currentFilter = type;
+  fetch(`/api/events?type=${type}&limit=100`)
+    .then(r => r.json())
+    .then(events => renderTable(events))
+    .catch(() => {});
+}
+
+function renderTable(events) {
+  const tbody = document.getElementById("events-tbody");
+  document.getElementById("event-count").textContent = events.length + " events";
+
+  if (!events.length) {
+    tbody.innerHTML = `<tr><td colspan="5" class="text-center text-secondary py-5">
+      <i class="fa-solid fa-database me-2"></i>No events found.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = events.map(ev => {
+    const snap = ev.snapshot_path
+      ? `<i class="fa-solid fa-image text-success"></i>`
+      : `<i class="fa-solid fa-ban text-secondary"></i>`;
+    const label = (ev.label || "—").substring(0, 60);
+    return `
+      <tr onclick="showSnapshot('${ev.snapshot_path || ''}','${ev.event_type}','${ev.timestamp}')"
+          style="cursor:pointer;">
+        <td class="ps-3 text-secondary">${ev.id}</td>
+        <td style="font-size:.85rem;white-space:nowrap;">${ev.timestamp}</td>
+        <td><span class="badge badge-${ev.event_type}">${ev.event_type}</span></td>
+        <td style="font-size:.85rem;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          ${label}</td>
+        <td>${snap}</td>
+      </tr>`;
+  }).join("");
+}
+
+// ── Auto-refresh every 5 seconds ─────────────────────────────────────────────
+setInterval(() => fetchEvents(currentFilter), 5000);
+</script>
+{% endblock %}

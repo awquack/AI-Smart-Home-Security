@@ -1,1 +1,18 @@
+# ── AI Model (too large for GitHub) ──────────────────────────
 yolov8n.pt
+
+# ── Database (runtime data) ───────────────────────────────────
+*.db
+
+# ── Snapshots (runtime data) ──────────────────────────────────
+snapshots/
+
+# ── Python cache ──────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+
+# ── Environment ───────────────────────────────────────────────
+.env
+venv/
+env/
