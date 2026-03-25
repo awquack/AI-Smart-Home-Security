@@ -23,6 +23,9 @@ flask>=3.0               # Web server + routing + session login
 # ── Alert Notifications ───────────────────────────────────────
 requests>=2.31           # Telegram bot API calls
 
+# ── System Monitoring (Sprint 4) ──────────────────────────────
+psutil>=5.9              # CPU & memory usage — used by health_monitor.py
+
 # ── Built-in (no install needed) ─────────────────────────────
 # sqlite3                # Event logging database (built into Python)
 # threading              # Background detection thread (built into Python)

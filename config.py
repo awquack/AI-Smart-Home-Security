@@ -17,9 +17,9 @@ EMAIL_SMTP_HOST = "smtp.gmail.com"
 EMAIL_SMTP_PORT = 587
 
 # ─── Telegram Alerts ──────────────────────────────────────────────────────────
-TELEGRAM_ENABLED   = False            # Set True after filling credentials
-TELEGRAM_BOT_TOKEN = "your_bot_token_here"
-TELEGRAM_CHAT_ID   = "your_chat_id_here"
+TELEGRAM_ENABLED   = True
+TELEGRAM_BOT_TOKEN = "8794666116:AAHg_JEnuv4Wa2yzEPRmG3wKKy_ZSfV1q14"
+TELEGRAM_CHAT_ID   = "8681712085"
 
 # ─── Alert Behavior ───────────────────────────────────────────────────────────
 ALERT_COOLDOWN_SEC  = 30   # Minimum seconds between alerts (avoids spam)

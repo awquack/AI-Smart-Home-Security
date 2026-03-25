@@ -12,6 +12,7 @@
 # Open: http://localhost:5000
 
 import os
+import csv
 import cv2
 import threading
 import time
@@ -135,7 +136,10 @@ def video_feed():
 @app.route("/snapshot/<path:filename>")
 @login_required
 def snapshot(filename):
-    return send_from_directory(os.path.abspath(config.SNAPSHOT_DIR), filename)
+    # Use script directory so the path is correct regardless of where app.py is run from
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    snap_dir = os.path.join(base_dir, config.SNAPSHOT_DIR)
+    return send_from_directory(snap_dir, filename)
 
 
 @app.route("/api/events")
@@ -162,6 +166,32 @@ def api_stats():
         "audio_active": shared.audio_active,
         "high_conf":    shared.high_conf,
     })
+
+
+@app.route("/status")
+@login_required
+def status():
+    """Live system health page — reads health_log.csv for the recent entries table."""
+    health_rows = []
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "health_log.csv")
+    if os.path.isfile(log_path):
+        try:
+            with open(log_path, newline="") as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)
+            for r in reversed(rows[-10:]):
+                health_rows.append({
+                    "timestamp": r.get("timestamp", ""),
+                    "cpu":       r.get("cpu_%", "N/A"),
+                    "mem_pct":   r.get("memory_%", "N/A"),
+                    "mem_mb":    r.get("memory_used_mb", "N/A"),
+                    "fps":       r.get("fps", "N/A"),
+                    "total":     r.get("total_events", "N/A"),
+                    "status":    r.get("status", "N/A"),
+                })
+        except Exception:
+            pass
+    return render_template("status.html", health_rows=health_rows)
 
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
