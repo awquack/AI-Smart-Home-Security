@@ -1,5 +1,9 @@
 # config.py – Central configuration for AI Smart Home Security
 
+import os
+from dotenv import load_dotenv
+load_dotenv()   # reads .env file into environment variables
+
 # ─── Dashboard (Flask) ────────────────────────────────────────────────────────
 SECRET_KEY           = "change_this_to_a_random_string"  # used to sign Flask sessions
 DASHBOARD_USERNAME   = "admin"
@@ -18,8 +22,8 @@ EMAIL_SMTP_PORT = 587
 
 # ─── Telegram Alerts ──────────────────────────────────────────────────────────
 TELEGRAM_ENABLED   = True
-TELEGRAM_BOT_TOKEN = "8794666116:AAHg_JEnuv4Wa2yzEPRmG3wKKy_ZSfV1q14"
-TELEGRAM_CHAT_ID   = "8681712085"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
 # ─── Alert Behavior ───────────────────────────────────────────────────────────
 ALERT_COOLDOWN_SEC  = 30   # Minimum seconds between alerts (avoids spam)
