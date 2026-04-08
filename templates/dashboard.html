@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – AI Security{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ──────────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold">
+      <i class="fa-solid fa-gauge me-2" style="color:#58a6ff;"></i>Live Dashboard
+    </h4>
+    <small class="text-secondary">Real-time monitoring</small>
+  </div>
+  <span id="status-badge" class="badge fs-6 px-3 py-2" style="background:#238636;">
+    <i class="fa-solid fa-circle-dot me-1"></i>Monitoring
+  </span>
+</div>
+
+<!-- ── LIVE FEED — full width ────────────────────────────────────────────────── -->
+<div class="stat-card p-3 mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <h6 class="text-secondary mb-0"><i class="fa-solid fa-video me-2"></i>Live Camera Feed</h6>
+    <p id="feed-status" class="text-secondary small mb-0">
+      <i class="fa-solid fa-circle-notch fa-spin me-1"></i>Connecting…
+    </p>
+  </div>
+  <img id="live-feed" src="" alt="Live feed"
+       style="width:100%;height:auto;display:block;border-radius:8px;background:#000;" />
+</div>
+
+<!-- ── Recent Alerts ────────────────────────────────────────────────────────── -->
+<div class="stat-card p-3">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h6 class="text-secondary mb-0"><i class="fa-solid fa-bell me-2"></i>Recent Alerts</h6>
+    <a href="{{ url_for('events') }}" class="btn btn-sm btn-outline-secondary">View all</a>
+  </div>
+  <div id="recent-events-list">
+    {% for ev in recent %}
+    <div class="d-flex align-items-start mb-2 pb-2" style="border-bottom:1px solid #30363d;">
+      <span class="badge badge-{{ ev.event_type }} me-2 mt-1" style="min-width:100px;">{{ ev.event_type }}</span>
+      <div>
+        <div style="font-size:.85rem;">{{ ev.label or '—' }}</div>
+        <div class="text-secondary" style="font-size:.75rem;">{{ ev.timestamp }}</div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-secondary small mb-0">No alerts yet.</p>
+    {% endfor %}
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+// ── Live feed ────────────────────────────────────────────────────────────────
+(function startFeed() {
+  const display = document.getElementById("live-feed");
+  const status  = document.getElementById("feed-status");
+  let errors    = 0;
+
+  function fetchFrame() {
+    const next = new Image();
+    next.onload = function() {
+      display.src = next.src;
+      errors = 0;
+      status.innerHTML = '<i class="fa-solid fa-circle me-1 text-success"></i>Live';
+      setTimeout(fetchFrame, 40);
+    };
+    next.onerror = function() {
+      errors++;
+      status.innerHTML = errors > 5
+        ? '<i class="fa-solid fa-triangle-exclamation me-1 text-warning"></i>Camera unavailable'
+        : '<i class="fa-solid fa-circle-notch fa-spin me-1"></i>Connecting…';
+      setTimeout(fetchFrame, 1000);
+    };
+    next.src = "/snapshot_feed?t=" + Date.now();
+  }
+  fetchFrame();
+})();
+
+// ── Status badge ─────────────────────────────────────────────────────────────
+function refreshStatus() {
+  fetch("{{ url_for('api_stats') }}")
+    .then(r => r.json())
+    .then(data => {
+      const badge = document.getElementById("status-badge");
+      if (data.high_conf) {
+        badge.style.background = "#dc3545";
+        badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i>ALERT';
+      } else if (data.motion_count > 0) {
+        badge.style.background = "#f97316";
+        badge.innerHTML = '<i class="fa-solid fa-person-running me-1"></i>Motion Detected';
+      } else {
+        badge.style.background = "#238636";
+        badge.innerHTML = '<i class="fa-solid fa-circle-dot me-1"></i>All Clear';
+      }
+    }).catch(() => {});
+}
+
+// ── Recent alerts ────────────────────────────────────────────────────────────
+function refreshRecent() {
+  fetch("{{ url_for('api_events') }}?limit=8")
+    .then(r => r.json())
+    .then(events => {
+      if (!events.length) return;
+      document.getElementById("recent-events-list").innerHTML = events.map(ev => `
+        <div class="d-flex align-items-start mb-2 pb-2" style="border-bottom:1px solid #30363d;">
+          <span class="badge badge-${ev.event_type} me-2 mt-1" style="min-width:100px;">${ev.event_type}</span>
+          <div>
+            <div style="font-size:.85rem;">${(ev.label||'—').substring(0,60)}</div>
+            <div class="text-secondary" style="font-size:.75rem;">${ev.timestamp}</div>
+          </div>
+        </div>`).join("");
+    }).catch(() => {});
+}
+
+setInterval(refreshStatus, 3000);
+setInterval(refreshRecent, 5000);
+</script>
+{% endblock %}
