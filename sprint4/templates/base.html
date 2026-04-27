@@ -51,6 +51,10 @@
     .badge-yolo            { background-color: #8b5cf6; }
     .badge-high_confidence { background-color: #ef4444; }
     .badge-manual_snapshot { background-color: #10b981; }
+    .badge-object          { background-color: #eab308; }
+    .badge-face            { background-color: #10b981; }
+    .badge-intruder        { background-color: #dc2626; }
+    .badge-clip            { background-color: #6366f1; }
 
     /* ── Snapshot modal ── */
     #snapImg { max-width: 100%; border-radius: 8px; }
@@ -94,6 +98,18 @@
             <i class="fa-solid fa-heart-pulse me-1"></i>Health
           </a>
         </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='clips' %}active{% endif %}"
+             href="{{ url_for('clips') }}">
+            <i class="fa-solid fa-film me-1"></i>Clips
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='faces' %}active{% endif %}"
+             href="{{ url_for('faces') }}">
+            <i class="fa-solid fa-user-check me-1"></i>Faces
+          </a>
+        </li>
       </ul>
 
       <ul class="navbar-nav ms-auto">
@@ -119,7 +135,7 @@
 
 <!-- ── Footer ─────────────────────────────────────────────────────────────── -->
 <footer class="text-center py-3">
-  AI-Based Smart Home Security &nbsp;·&nbsp; Sprint 3 &nbsp;·&nbsp;
+  AI-Based Smart Home Security &nbsp;·&nbsp; Sprint 4 &nbsp;·&nbsp;
   Local Deployment
 </footer>
 

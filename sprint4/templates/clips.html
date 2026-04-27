@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Clips – AI Security{% endblock %}
+
+{% block content %}
+
+<!-- ── Page header ──────────────────────────────────────────────────────────── -->
+<div class="d-flex align-items-center justify-content-between mb-4">
+  <div>
+    <h4 class="mb-0 fw-bold">
+      <i class="fa-solid fa-film me-2" style="color:#58a6ff;"></i>Event Clips
+    </h4>
+    <small class="text-secondary">Recorded video clips from security events</small>
+  </div>
+  <span class="badge bg-secondary fs-6 px-3 py-2">{{ clips | length }} clips</span>
+</div>
+
+{% if not clips %}
+<div class="stat-card p-5 text-center text-secondary">
+  <i class="fa-solid fa-film fa-3x mb-3 d-block" style="opacity:.3;"></i>
+  No clips recorded yet. Clips are saved automatically when motion is detected.
+</div>
+{% else %}
+
+<!-- ── Video player ───────────────────────────────────────────────────────────── -->
+<div class="stat-card p-3 mb-4" id="player-card" style="display:none;">
+  <h6 class="text-secondary mb-3">
+    <i class="fa-solid fa-play me-2"></i><span id="player-title">—</span>
+  </h6>
+  <video id="clip-player" controls autoplay
+         style="width:100%; max-height:480px; border-radius:8px; background:#000;">
+    Your browser does not support video playback.
+  </video>
+</div>
+
+<!-- ── Clips grid ─────────────────────────────────────────────────────────────── -->
+<div class="row g-3">
+  {% for clip in clips %}
+  <div class="col-sm-6 col-md-4 col-lg-3">
+    <div class="stat-card p-3 clip-card" style="cursor:pointer;"
+         onclick="playClip('{{ clip.name }}')">
+      <div class="d-flex align-items-center mb-2">
+        <i class="fa-solid fa-circle-play fa-2x me-3" style="color:#58a6ff;"></i>
+        <div>
+          <div style="font-size:.8rem; font-weight:600; word-break:break-all;">
+            {{ clip.name }}
+          </div>
+          <div class="text-secondary" style="font-size:.75rem;">{{ clip.size_mb }} MB</div>
+        </div>
+      </div>
+      <!-- Parse timestamp from filename e.g. event_20240408_145623.mp4 -->
+      {% set parts = clip.name.replace('.mp4','').split('_') %}
+      {% if parts | length >= 3 %}
+      <div class="text-secondary" style="font-size:.72rem;">
+        <i class="fa-solid fa-clock me-1"></i>
+        {{ parts[1][:4] }}-{{ parts[1][4:6] }}-{{ parts[1][6:] }}
+        {{ parts[2][:2] }}:{{ parts[2][2:4] }}:{{ parts[2][4:] }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endif %}
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+function playClip(name) {
+  const card   = document.getElementById("player-card");
+  const player = document.getElementById("clip-player");
+  const title  = document.getElementById("player-title");
+
+  player.src = "/clip/" + name;
+  title.textContent = name;
+  card.style.display = "block";
+  card.scrollIntoView({ behavior: "smooth" });
+  player.play();
+
+  // Highlight selected card
+  document.querySelectorAll(".clip-card").forEach(c => c.style.borderColor = "#30363d");
+  event.currentTarget.style.borderColor = "#58a6ff";
+}
+</script>
+{% endblock %}

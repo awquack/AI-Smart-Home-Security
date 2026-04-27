@@ -8,17 +8,16 @@ from email.mime.image import MIMEImage
 
 import config
 
-_last_alert_time = 0.0
+_last_alert_times: dict[str, float] = {}
 _lock = threading.Lock()
 
 
-def _can_fire() -> bool:
-    """Enforce global alert cooldown to prevent spam."""
-    global _last_alert_time
+def _can_fire(event_type: str) -> bool:
+    """Enforce per-event-type cooldown to prevent one type from blocking others."""
     with _lock:
         now = time.time()
-        if now - _last_alert_time >= config.ALERT_COOLDOWN_SEC:
-            _last_alert_time = now
+        if now - _last_alert_times.get(event_type, 0.0) >= config.ALERT_COOLDOWN_SEC:
+            _last_alert_times[event_type] = now
             return True
         return False
 
@@ -95,6 +94,23 @@ def _send_telegram(message: str, snapshot_path: str | None):
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
+def send_daily_summary(counts: dict):
+    """Send a daily summary report via Telegram."""
+    if not config.TELEGRAM_ENABLED:
+        return
+    import datetime
+    today  = datetime.date.today().strftime("%Y-%m-%d")
+    total  = sum(counts.values())
+    lines  = [f"📋 Daily Security Report — {today}", f"Total events: {total}"]
+    for k, v in sorted(counts.items(), key=lambda x: -x[1]):
+        lines.append(f"  • {k}: {v}")
+    if total == 0:
+        lines.append("  All clear — no events today.")
+    message = "\n".join(lines)
+    threading.Thread(target=_send_telegram, args=(message, None), daemon=True).start()
+    print(f"[ALERT] Daily summary sent — {total} events")
+
+
 def send_alert(event_type: str, label: str = "", snapshot_path: str | None = None):
     """
     Send alert via all enabled channels (non-blocking, runs in background thread).
@@ -105,7 +121,7 @@ def send_alert(event_type: str, label: str = "", snapshot_path: str | None = Non
     if config.HIGH_CONF_ONLY and event_type != "high_confidence":
         return
 
-    if not _can_fire():
+    if not _can_fire(event_type):
         return
 
     subject = f"[SECURITY ALERT] {event_type.upper()} detected"

@@ -1,5 +1,5 @@
 """
-AI Home Security – Sprint 3  (detection engine)
+AI Home Security – Sprint 4  (detection engine)
 
 Can run in two modes:
   Standalone : python sprint3_main.py          → opens OpenCV window
@@ -19,6 +19,7 @@ from collections import deque
 import config
 import database
 import alerts
+import face_recognition_module as face_mod
 
 # ─── DB + snapshot dir ────────────────────────────────────────────────────────
 os.makedirs(config.SNAPSHOT_DIR, exist_ok=True)
@@ -28,7 +29,7 @@ database.init_db()
 # ─── YOLO (loaded once at module level) ───────────────────────────────────────
 try:
     from ultralytics import YOLO as _YOLO_CLS
-    _yolo_model = _YOLO_CLS("yolov8n.pt")
+    _yolo_model = _YOLO_CLS("yolov8s.pt")
     _yolo_model.fuse()
     YOLO_AVAILABLE = True
     print("[YOLO] YOLOv8n ready")
@@ -36,9 +37,30 @@ except Exception as _e:
     YOLO_AVAILABLE = False
     print(f"[YOLO] Unavailable – {_e}")
 
+# ─── Distance estimation ──────────────────────────────────────────────────────
+_FOCAL_LENGTH_PX = 700   # approximate focal length for a standard webcam at 720p
+_KNOWN_HEIGHT_CM = 170   # average human height in cm
+
+def estimate_distance_m(box_height_px):
+    """Estimate distance to a person using bounding box height (metres)."""
+    if box_height_px <= 0:
+        return None
+    return round((_KNOWN_HEIGHT_CM * _FOCAL_LENGTH_PX) / (box_height_px * 100), 1)
+
+
 _YOLO_CLASSES = {
     0: "person", 1: "bicycle", 2: "car", 3: "motorcycle",
     15: "cat",   16: "dog",
+    # common objects that may appear in a security scene
+    24: "backpack", 25: "umbrella", 26: "handbag", 28: "suitcase",
+    39: "bottle",   41: "cup",      63: "laptop",  64: "mouse",
+    66: "keyboard", 67: "phone",    73: "book",     76: "scissors",
+}
+
+# classes that are NOT a person — trigger "unknown object" alert
+_NON_HUMAN_CLASSES = {
+    24, 25, 26, 28, 39, 41, 63, 64, 66, 67, 73, 76,
+    1, 2, 3, 15, 16
 }
 
 def yolo_detect_frame(frame):
@@ -72,9 +94,9 @@ try:
     _SR          = 22050
     _CHUNK_N     = int(_SR * 0.5)
     _N_MFCC      = 13
-    _ENERGY_TH   = 0.005
-    _ENERGY_LOUD = 0.05
-    _MFCC_DIST   = 25.0   # raised from 8.0 — silence baseline sits at ~22, so threshold must be above that
+    _ENERGY_TH   = 0.02   # raised — ignore near-silence
+    _ENERGY_LOUD = 0.10   # raised — only truly loud sounds
+    _MFCC_DIST   = 60.0   # raised — further from baseline to reduce false triggers
     _BASELINE_N  = 10
     _mfcc_base   = None
     _base_buf    = []
@@ -198,8 +220,11 @@ def merge_boxes(boxes, gap):
 
 
 def save_snapshot(frame, prefix="event"):
-    fname = (f"{config.SNAPSHOT_DIR}/{prefix}_"
-             f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+    # %f adds microseconds — prevents filename collision when multiple events happen per second
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    snap_dir = os.path.join(base_dir, config.SNAPSHOT_DIR)
+    os.makedirs(snap_dir, exist_ok=True)
+    fname = os.path.join(snap_dir, f"{prefix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
     cv2.imwrite(fname, frame)
     return fname
 
@@ -241,7 +266,7 @@ def run_detection(shared_state=None, show_window=True):
     cap = cv2.VideoCapture(camera_index)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    cap.set(cv2.CAP_PROP_FPS, 30)
+    cap.set(cv2.CAP_PROP_FPS, 60)
     time.sleep(2)
 
     ret, frame1 = cap.read()
@@ -275,6 +300,7 @@ def run_detection(shared_state=None, show_window=True):
     # ── State ─────────────────────────────────────────────────────────────────
     recent_detections = deque(maxlen=30)
     yolo_detections   = deque(maxlen=15)
+    face_detections   = deque(maxlen=15)
     motion_count      = 0
     frame_count       = 0
     start_time        = time.time()
@@ -287,11 +313,128 @@ def run_detection(shared_state=None, show_window=True):
     high_conf_until   = 0.0
     high_conf_logged  = False
 
+    # ── Video clip state ──────────────────────────────────────────────────────
+    os.makedirs(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             config.CLIP_DIR), exist_ok=True)
+    _PRE_FRAMES   = int(30 * config.CLIP_PRE_SECONDS)
+    _pre_buffer   = deque(maxlen=_PRE_FRAMES)
+    _clip_frames  = []
+    _clip_until   = 0.0
+    _clip_saving  = False
+
+    def _write_clip(frames, w, h, clip_fps, prefix="event"):
+        base_dir  = os.path.dirname(os.path.abspath(__file__))
+        clips_dir = os.path.join(base_dir, config.CLIP_DIR)
+        os.makedirs(clips_dir, exist_ok=True)
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # mp4v is the most reliable codec on Windows — use it first
+        candidates = [
+            ("mp4v", os.path.join(clips_dir, f"{prefix}_{ts}.mp4")),
+            ("XVID", os.path.join(clips_dir, f"{prefix}_{ts}.avi")),
+            ("MJPG", os.path.join(clips_dir, f"{prefix}_{ts}.avi")),
+        ]
+        out = None
+        fname = None
+        for codec, path in candidates:
+            fourcc = cv2.VideoWriter_fourcc(*codec)
+            writer = cv2.VideoWriter(path, fourcc, clip_fps, (w, h))
+            if writer.isOpened():
+                out   = writer
+                fname = path
+                break
+            writer.release()
+
+        if out is None:
+            print("[CLIP] ERROR: no working codec found — clip not saved")
+            return
+
+        for f in frames:
+            out.write(f)
+        out.release()
+        print(f"[CLIP] Saved: {fname}")
+        database.log_event("clip", snapshot_path=fname)
+        alerts.send_alert("clip", label=f"Clip saved: {os.path.basename(fname)}")
+
+    # ── Async YOLO state ──────────────────────────────────────────────────────
+    _yolo_running  = threading.Event()   # set while YOLO thread is busy
+    _yolo_results  = []                  # latest detections from YOLO thread
+
+    def _run_yolo_async(f, current_t):
+        nonlocal _yolo_results
+        dets            = yolo_detect_frame(f)
+        person_detected = any(lbl.startswith("person") for _, _, _, _, lbl, _ in dets)
+
+        for det in dets:
+            x, y, w, h, lbl, conf = det
+            yolo_detections.append({"box": (x, y, w, h), "label": lbl, "time": current_t})
+            snap   = save_snapshot(f, "yolo") if config.AUTO_SNAPSHOT else None
+            cls_id = next((k for k, v in _YOLO_CLASSES.items() if lbl.startswith(v)), None)
+            database.log_event("yolo", label=lbl, confidence=conf,
+                               snapshot_path=snap, x=x, y=y, w=w, h=h)
+            if cls_id in _NON_HUMAN_CLASSES:
+                alerts.send_alert("object", label=f"Unknown object detected: {lbl}", snapshot_path=snap)
+                print(f"[YOLO] Non-human object: {lbl}")
+            else:
+                # ── Face recognition + distance estimation on person detections ──
+                cam_dist = estimate_distance_m(h)
+                faces = face_mod.check_frame_for_faces(f, person_box=(x, y, w, h))
+                if faces:
+                    for face in faces:
+                        name      = face["name"]
+                        dist      = face["distance"]
+                        is_intrud = face["is_intruder"]
+                        fx, fy, fw, fh = face["box"]
+                        dist_str  = f"{cam_dist}m" if cam_dist else "?"
+                        print(f"[FACE] {name}  match={dist:.2f}  distance={dist_str}  intruder={is_intrud}")
+                        snap_face = save_snapshot(f, f"face_{name}") if config.AUTO_SNAPSHOT else None
+                        database.log_event(
+                            "intruder" if is_intrud else "face_recognized",
+                            label=f"{name} ({dist_str} away, match={dist:.2f})",
+                            confidence=1 - dist, snapshot_path=snap_face,
+                            x=fx, y=fy, w=fw, h=fh)
+                        if is_intrud:
+                            alerts.send_alert("intruder",
+                                              label=f"Unknown face detected! ({dist_str} away)",
+                                              snapshot_path=snap_face)
+                        else:
+                            alerts.send_alert("face",
+                                              label=f"Known person: {name} ({dist_str} away)",
+                                              snapshot_path=snap_face)
+                        face_detections.append({
+                            "box":        (fx, fy, fw, fh),
+                            "name":       name,
+                            "is_intruder": is_intrud,
+                            "distance":   dist_str,
+                            "time":       current_t,
+                        })
+                else:
+                    # Person detected but face_recognition not installed — show distance only
+                    face_detections.append({
+                        "box":        (x, y, w, h),
+                        "name":       None,
+                        "is_intruder": False,
+                        "distance":   f"{cam_dist}m" if cam_dist else "?",
+                        "time":       current_t,
+                    })
+                    alerts.send_alert("yolo", label=lbl, snapshot_path=snap)
+            print(f"[YOLO] {lbl}  conf={conf:.0%}")
+
+        # motion triggered YOLO but no person found — could be an object left behind
+        if not person_detected:
+            snap = save_snapshot(f, "noperson") if config.AUTO_SNAPSHOT else None
+            alerts.send_alert("object", label="Motion detected — no human identified", snapshot_path=snap)
+            print("[YOLO] Motion but no person detected")
+
+        _yolo_results = dets
+        _yolo_running.clear()
+
     print("=" * 62)
-    print("  AI HOME SECURITY – SPRINT 3")
+    print("  AI HOME SECURITY – SPRINT 4")
     print("=" * 62)
     print(f"  YOLO   : {'ON (YOLOv8n)' if YOLO_AVAILABLE else 'OFF'}")
     print(f"  Audio  : {'ON' if AUDIO_MONITOR else 'OFF'}")
+    print(f"  Face   : {'ON' if face_mod.FACE_RECOG_AVAILABLE else 'OFF (pip install face_recognition)'}")
     print(f"  Mode   : {'Standalone (OpenCV window)' if show_window else 'Integrated (Flask dashboard)'}")
     print(f"  DB     : {config.DB_PATH}")
     if show_window:
@@ -303,7 +446,7 @@ def run_detection(shared_state=None, show_window=True):
         shared_state.status_text = "Monitoring"
 
     if show_window:
-        WIN_NAME = "AI Home Security – Sprint 3"
+        WIN_NAME = "AI Home Security – Sprint 4"
         cv2.namedWindow(WIN_NAME, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(WIN_NAME, 1280, 720)
 
@@ -361,23 +504,23 @@ def run_detection(shared_state=None, show_window=True):
             consec_motion = 0
         confirmed = merged if consec_motion >= CONFIRM_FRAMES else []
 
-        # YOLO
-        if confirmed and frames_since_yolo >= YOLO_EVERY:
-            new_yolo = yolo_detect_frame(frame)
-            for det in new_yolo:
-                x, y, w, h, lbl, conf = det
-                yolo_detections.append({"box": (x, y, w, h), "label": lbl,
-                                        "time": current_time})
-                snap = save_snapshot(frame, "yolo") if config.AUTO_SNAPSHOT else None
-                database.log_event("yolo", label=lbl, confidence=conf,
-                                    snapshot_path=snap, x=x, y=y, w=w, h=h)
-                alerts.send_alert("yolo", label=lbl, snapshot_path=snap)
-                print(f"[YOLO] {lbl}  conf={conf:.0%}")
+        # YOLO (runs in background thread — does not block main loop)
+        if confirmed and frames_since_yolo >= YOLO_EVERY and not _yolo_running.is_set():
+            _yolo_running.set()
+            threading.Thread(
+                target=_run_yolo_async,
+                args=(frame.copy(), current_time),
+                daemon=True
+            ).start()
             frames_since_yolo = 0
 
         # Motion events
         if confirmed:
             last_motion_time = current_time
+            if current_time >= _clip_until:   # start a new clip
+                _clip_frames.clear()
+                _clip_frames.extend(_pre_buffer)
+                _clip_until = current_time + config.CLIP_POST_SECONDS
         for box in confirmed:
             recent_detections.append({"box": box, "time": current_time, "id": motion_count})
             x, y, w, h = box
@@ -449,6 +592,17 @@ def run_detection(shared_state=None, show_window=True):
             cv2.putText(display_frame, yd["label"], (x+4, max(10, y-6)),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 220, 255), 2)
 
+        active_faces = [d for d in face_detections
+                        if current_time - d["time"] < PERSIST_TIME]
+        for fd in active_faces:
+            fx, fy, fw, fh = fd["box"]
+            color = (0, 0, 220) if fd["is_intruder"] else (0, 200, 60)
+            cv2.rectangle(display_frame, (fx, fy), (fx+fw, fy+fh), color, 2)
+            label = fd["name"] if fd["name"] else "person"
+            tag   = f"{'INTRUDER' if fd['is_intruder'] else label}  {fd['distance']}"
+            cv2.putText(display_frame, tag, (fx+4, max(10, fy-6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+
         # Status bar overlay
         overlay = display_frame.copy()
         cv2.rectangle(overlay, (0, 0), (FRAME_W, 140), (0, 0, 0), -1)
@@ -492,6 +646,22 @@ def run_detection(shared_state=None, show_window=True):
         counts = database.get_event_counts()
         cv2.putText(display_frame, f"  DB events: {sum(counts.values())}",
                     (10, 138), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (120, 200, 120), 1)
+
+        # ── Video clip recording ───────────────────────────────────────────
+        _pre_buffer.append(display_frame.copy())
+
+        if current_time < _clip_until:
+            _clip_frames.append(display_frame.copy())
+        elif _clip_frames and not _clip_saving:
+            _clip_saving = True
+            frames_to_write = _clip_frames[:]
+            _clip_frames.clear()
+            threading.Thread(
+                target=_write_clip,
+                args=(frames_to_write, FRAME_W, FRAME_H, max(1, round(fps)), "event"),
+                daemon=True
+            ).start()
+            _clip_saving = False
 
         # ── Push annotated frame to shared buffer (integrated mode) ────────
         if shared_state:
@@ -542,7 +712,7 @@ def run_detection(shared_state=None, show_window=True):
     fps     = frame_count / elapsed if elapsed > 0 else 0
     counts  = database.get_event_counts()
     print("\n" + "=" * 62)
-    print("  SPRINT 3 SESSION COMPLETE")
+    print("  SPRINT 4 SESSION COMPLETE")
     print(f"  Motion events : {motion_count}  |  Runtime: {elapsed:.1f}s  |  FPS: {fps:.1f}")
     print(f"  DB breakdown  : {counts}")
     print("=" * 62)

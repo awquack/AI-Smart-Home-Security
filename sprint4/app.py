@@ -16,6 +16,7 @@ import csv
 import cv2
 import threading
 import time
+import datetime
 import numpy as np
 from functools import wraps
 from flask import (Flask, Response, render_template, redirect,
@@ -23,6 +24,7 @@ from flask import (Flask, Response, render_template, redirect,
 
 import config
 import database
+import alerts
 from shared import shared                          # shared frame buffer + status
 from sprint3_main import run_detection             # detection engine
 
@@ -32,15 +34,57 @@ app.secret_key = config.SECRET_KEY
 
 database.init_db()
 
-# ─── Start detection in background thread ─────────────────────────────────────
-# show_window=False → no OpenCV popup, frames go to shared buffer only
-_detection_thread = threading.Thread(
-    target=run_detection,
-    args=(shared, False),
-    daemon=True
-)
-_detection_thread.start()
-print("[APP] Detection thread started — waiting for first frame…")
+# ─── Daily summary + disk cleanup scheduler ───────────────────────────────────
+def _cleanup_old_files():
+    """Delete clips and snapshots older than CLEANUP_MAX_DAYS."""
+    if not config.CLEANUP_ENABLED:
+        return
+    cutoff   = time.time() - config.CLEANUP_MAX_DAYS * 86400
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    removed  = 0
+    for folder in [config.CLIP_DIR, config.SNAPSHOT_DIR]:
+        dirpath = os.path.join(base_dir, folder)
+        if not os.path.isdir(dirpath):
+            continue
+        for fname in os.listdir(dirpath):
+            fpath = os.path.join(dirpath, fname)
+            if os.path.isfile(fpath) and os.path.getmtime(fpath) < cutoff:
+                os.remove(fpath)
+                removed += 1
+    if removed:
+        print(f"[CLEANUP] Removed {removed} old file(s) older than {config.CLEANUP_MAX_DAYS} days")
+
+
+def _daily_summary_scheduler():
+    """Sleeps until midnight, sends a daily summary, runs cleanup, then repeats."""
+    while True:
+        now       = datetime.datetime.now()
+        midnight  = (now + datetime.timedelta(days=1)).replace(
+                        hour=0, minute=0, second=0, microsecond=0)
+        time.sleep((midnight - now).total_seconds())
+        counts = database.get_today_counts()
+        alerts.send_daily_summary(counts)
+        _cleanup_old_files()
+
+threading.Thread(target=_daily_summary_scheduler, daemon=True).start()
+
+
+# ─── Start detection in background thread (with auto-restart) ─────────────────
+def _detection_watchdog():
+    """Runs detection in a loop — restarts automatically if it crashes."""
+    while True:
+        print("[APP] Detection thread started — waiting for first frame…")
+        try:
+            run_detection(shared, False)
+        except Exception as e:
+            print(f"[APP] Detection crashed: {e}")
+        if not shared.running:
+            break   # clean stop requested — don't restart
+        print("[APP] Detection thread ended unexpectedly — restarting in 3s…")
+        shared.status_text = "Restarting…"
+        time.sleep(3)
+
+threading.Thread(target=_detection_watchdog, daemon=True).start()
 
 
 # ─── Login required decorator ─────────────────────────────────────────────────
@@ -79,7 +123,7 @@ def generate_mjpeg():
             jpeg = _placeholder
         yield (b"--frame\r\n"
                b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
-        time.sleep(0.04)   # ~25 fps
+        time.sleep(0.016)  # ~60 fps
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -152,6 +196,76 @@ def api_events():
     return jsonify(rows)
 
 
+@app.route("/api/chart_data")
+@login_required
+def api_chart_data():
+    return jsonify({
+        "hourly": database.get_hourly_counts(),
+        "daily":  database.get_daily_counts(),
+    })
+
+
+@app.route("/clips")
+@login_required
+def clips():
+    base_dir  = os.path.dirname(os.path.abspath(__file__))
+    clips_dir = os.path.join(base_dir, "clips")
+    files = []
+    if os.path.isdir(clips_dir):
+        for f in sorted(os.listdir(clips_dir), reverse=True):
+            if f.endswith(".mp4"):
+                size = os.path.getsize(os.path.join(clips_dir, f))
+                files.append({"name": f, "size_mb": round(size / 1024 / 1024, 1)})
+    return render_template("clips.html", clips=files)
+
+
+@app.route("/clip/<path:filename>")
+@login_required
+def serve_clip(filename):
+    base_dir  = os.path.dirname(os.path.abspath(__file__))
+    clips_dir = os.path.join(base_dir, "clips")
+    return send_from_directory(clips_dir, filename)
+
+
+@app.route("/faces", methods=["GET"])
+@login_required
+def faces():
+    known = database.get_known_faces()
+    return render_template("faces.html", faces=known)
+
+
+@app.route("/faces/register", methods=["POST"])
+@login_required
+def register_face():
+    import face_recognition_module as face_mod
+    name  = request.form.get("name", "").strip()
+    photo = request.files.get("photo")
+    if not name or not photo:
+        return redirect(url_for("faces"))
+
+    base_dir   = os.path.dirname(os.path.abspath(__file__))
+    photos_dir = os.path.join(base_dir, config.FACE_PHOTOS_DIR)
+    os.makedirs(photos_dir, exist_ok=True)
+    photo_path = os.path.join(photos_dir, f"{name}_{photo.filename}")
+    photo.save(photo_path)
+
+    encodings = face_mod.encode_face_from_path(photo_path)
+    if not encodings:
+        return render_template("faces.html",
+                               faces=database.get_known_faces(),
+                               error=f"No face detected in photo for '{name}'. Try a clearer image.")
+    database.add_known_face(name, encodings[0].tolist())
+    print(f"[FACE] Registered: {name}")
+    return redirect(url_for("faces"))
+
+
+@app.route("/faces/delete/<int:face_id>", methods=["POST"])
+@login_required
+def delete_face(face_id):
+    database.delete_known_face(face_id)
+    return redirect(url_for("faces"))
+
+
 @app.route("/api/stats")
 @login_required
 def api_stats():
@@ -196,6 +310,16 @@ def status():
 
 # ─── Entry point ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    print(f"[DASH] Dashboard → http://localhost:{config.DASHBOARD_PORT}")
+    if config.HTTPS_ENABLED and os.path.isfile(config.CERT_FILE) and os.path.isfile(config.KEY_FILE):
+        protocol = "https"
+        ssl_ctx  = (config.CERT_FILE, config.KEY_FILE)
+    else:
+        protocol = "http"
+        ssl_ctx  = None
+        if config.HTTPS_ENABLED:
+            print("[DASH] WARNING: cert.pem/key.pem not found — run: python generate_cert.py")
+
+    print(f"[DASH] Dashboard → {protocol}://localhost:{config.DASHBOARD_PORT}")
     print(f"[DASH] Login: {config.DASHBOARD_USERNAME} / {config.DASHBOARD_PASSWORD}")
-    app.run(host="0.0.0.0", port=config.DASHBOARD_PORT, debug=False, threaded=True)
+    app.run(host="0.0.0.0", port=config.DASHBOARD_PORT,
+            debug=False, threaded=True, ssl_context=ssl_ctx)
