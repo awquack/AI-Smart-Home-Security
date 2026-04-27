@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────
+#  AI-Based Smart Home Security – Requirements
+#  Install all: pip install -r requirements.txt
+#  Run system : python app.py
+#  Open browser: http://localhost:5000
+#  Login      : admin / admin123
+# ─────────────────────────────────────────────────────────────
+
+# ── Computer Vision ───────────────────────────────────────────
+opencv-python>=4.8       # Camera capture, motion detection, frame drawing
+numpy>=1.24              # Array operations for frame processing
+
+# ── AI / Object Detection ─────────────────────────────────────
+ultralytics>=8.0         # YOLOv8 object detection (person, car, etc.)
+
+# ── Audio Anomaly Detection ───────────────────────────────────
+sounddevice>=0.4         # Microphone input stream
+librosa>=0.10            # MFCC feature extraction for audio analysis
+
+# ── Web Dashboard ─────────────────────────────────────────────
+flask>=3.0               # Web server + routing + session login
+
+# ── Alert Notifications ───────────────────────────────────────
+requests>=2.31           # Telegram bot API calls
+
+# ── System Monitoring (Sprint 4) ──────────────────────────────
+psutil>=5.9              # CPU & memory usage — used by health_monitor.py
+
+# ── Environment / Secrets ─────────────────────────────────────
+python-dotenv>=1.0       # Loads .env file so secrets stay out of config.py
+
+# ── Built-in (no install needed) ─────────────────────────────
+# sqlite3                # Event logging database (built into Python)
+# threading              # Background detection thread (built into Python)
+# smtplib                # Email alerts via Gmail (built into Python)

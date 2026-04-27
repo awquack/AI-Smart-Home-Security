@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}System Status – AI Security{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="mb-0">
+    <i class="fa-solid fa-heart-pulse me-2" style="color:#58a6ff;"></i>System Health
+  </h4>
+  <span class="badge bg-secondary" id="last-updated">Updating…</span>
+</div>
+
+<!-- ── Live status cards ──────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-circle-play me-1"></i>Status</div>
+      <div class="stat-number" id="status-text" style="font-size:1.2rem;">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-film me-1"></i>FPS</div>
+      <div class="stat-number" id="stat-fps">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-microchip me-1"></i>CPU</div>
+      <div class="stat-number" id="stat-cpu">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-memory me-1"></i>Memory</div>
+      <div class="stat-number" id="stat-mem">—</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Detection flags ────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-person-walking me-1"></i>Motion Active</div>
+      <div id="flag-motion" class="fs-4 mt-1">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-microphone me-1"></i>Audio Active</div>
+      <div id="flag-audio" class="fs-4 mt-1">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>High Confidence</div>
+      <div id="flag-highconf" class="fs-4 mt-1">—</div>
+    </div>
+  </div>
+
+  <div class="col-6 col-md-3">
+    <div class="stat-card p-3 text-center">
+      <div class="text-secondary small mb-1"><i class="fa-solid fa-database me-1"></i>Total Events</div>
+      <div class="stat-number" id="stat-total">—</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Event breakdown ────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+  <div class="col-12 col-md-6">
+    <div class="stat-card p-3">
+      <h6 class="text-secondary mb-3"><i class="fa-solid fa-chart-bar me-1"></i>Event Breakdown</h6>
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr>
+            <td><span class="badge badge-motion">Motion</span></td>
+            <td id="cnt-motion" class="text-end fw-bold">—</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-audio">Audio</span></td>
+            <td id="cnt-audio" class="text-end fw-bold">—</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-yolo">YOLO</span></td>
+            <td id="cnt-yolo" class="text-end fw-bold">—</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-high_confidence">High Confidence</span></td>
+            <td id="cnt-highconf" class="text-end fw-bold">—</td>
+          </tr>
+          <tr>
+            <td><span class="badge badge-manual_snapshot">Manual Snapshot</span></td>
+            <td id="cnt-manual" class="text-end fw-bold">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6">
+    <div class="stat-card p-3 h-100">
+      <h6 class="text-secondary mb-3"><i class="fa-solid fa-circle-check me-1"></i>Component Status</h6>
+      <ul class="list-unstyled mb-0" id="component-list">
+        <li class="mb-2"><i class="fa-solid fa-camera me-2 text-success"></i>Camera feed <span class="badge bg-success ms-1">RUNNING</span></li>
+        <li class="mb-2" id="comp-yolo"><i class="fa-solid fa-eye me-2 text-success"></i>YOLO detection <span class="badge bg-success ms-1">ACTIVE</span></li>
+        <li class="mb-2" id="comp-audio"><i class="fa-solid fa-microphone me-2 text-success"></i>Audio monitor <span class="badge bg-success ms-1">ACTIVE</span></li>
+        <li class="mb-2"><i class="fa-solid fa-database me-2 text-success"></i>SQLite logging <span class="badge bg-success ms-1">OK</span></li>
+        <li class="mb-2"><i class="fa-solid fa-server me-2 text-success"></i>Flask dashboard <span class="badge bg-success ms-1">OK</span></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ── Health log last rows ────────────────────────────────────────────────── -->
+{% if health_rows %}
+<div class="stat-card p-3">
+  <h6 class="text-secondary mb-3">
+    <i class="fa-solid fa-chart-line me-1"></i>Recent Health Log
+    <small class="text-muted ms-2">(last {{ health_rows|length }} entries from health_log.csv)</small>
+  </h6>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Timestamp</th>
+          <th class="text-end">CPU %</th>
+          <th class="text-end">MEM %</th>
+          <th class="text-end">MEM MB</th>
+          <th class="text-end">FPS</th>
+          <th class="text-end">Events</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in health_rows %}
+        <tr>
+          <td class="text-secondary small">{{ row.timestamp }}</td>
+          <td class="text-end">{{ row.cpu }}</td>
+          <td class="text-end">{{ row.mem_pct }}</td>
+          <td class="text-end">{{ row.mem_mb }}</td>
+          <td class="text-end">{{ row.fps }}</td>
+          <td class="text-end">{{ row.total }}</td>
+          <td class="small text-secondary">{{ row.status }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="stat-card p-3 text-center text-secondary">
+  <i class="fa-solid fa-file-csv fa-2x mb-2 d-block"></i>
+  No health log yet — run the system for 60 seconds to see data here.
+</div>
+{% endif %}
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  function yesNo(val, trueLabel, falseLabel) {
+    if (val) {
+      return '<span class="text-success"><i class="fa-solid fa-circle-check"></i> ' + (trueLabel||'YES') + '</span>';
+    }
+    return '<span class="text-secondary"><i class="fa-regular fa-circle"></i> ' + (falseLabel||'NO') + '</span>';
+  }
+
+  function refreshStats() {
+    fetch("/api/stats")
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById("status-text").textContent  = d.status  || "—";
+        document.getElementById("stat-fps").textContent     = (typeof d.fps === "number") ? d.fps.toFixed(1) : d.fps;
+        document.getElementById("stat-total").textContent   = d.total   ?? "—";
+
+        document.getElementById("cnt-motion").textContent   = d.counts.motion           ?? 0;
+        document.getElementById("cnt-audio").textContent    = d.counts.audio            ?? 0;
+        document.getElementById("cnt-yolo").textContent     = d.counts.yolo             ?? 0;
+        document.getElementById("cnt-highconf").textContent = d.counts.high_confidence  ?? 0;
+        document.getElementById("cnt-manual").textContent   = d.counts.manual_snapshot  ?? 0;
+
+        document.getElementById("flag-motion").innerHTML    = yesNo(d.motion_count > 0, "DETECTED", "CLEAR");
+        document.getElementById("flag-audio").innerHTML     = yesNo(d.audio_active,     "DETECTED", "CLEAR");
+        document.getElementById("flag-highconf").innerHTML  = yesNo(d.high_conf,        "ALERT",    "CLEAR");
+
+        const now = new Date().toLocaleTimeString();
+        document.getElementById("last-updated").textContent = "Updated " + now;
+      })
+      .catch(() => {
+        document.getElementById("status-text").textContent = "Offline";
+      });
+  }
+
+  refreshStats();
+  setInterval(refreshStats, 3000);
+</script>
+{% endblock %}

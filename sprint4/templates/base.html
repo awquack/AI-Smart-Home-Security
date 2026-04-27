@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}AI Security Dashboard{% endblock %}</title>
+
+  <!-- Bootstrap 5 – responsive layout, dark theme, components -->
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+
+  <!-- Font Awesome 6 – icons -->
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <style>
+    /* ── Global ── */
+    body { background-color: #0d1117; color: #e6edf3; }
+
+    /* ── Navbar ── */
+    .navbar-brand span { color: #58a6ff; font-weight: 700; }
+    .nav-link.active  { color: #58a6ff !important; }
+
+    /* ── Stat cards ── */
+    .stat-card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      transition: transform .15s;
+    }
+    .stat-card:hover { transform: translateY(-3px); }
+    .stat-number { font-size: 2.4rem; font-weight: 700; }
+
+    /* ── Event table ── */
+    .table { --bs-table-bg: #161b22; --bs-table-border-color: #30363d; }
+    .table tbody tr:hover { background-color: #1f2937 !important; cursor: pointer; }
+
+    /* ── Live feed ── */
+    #live-feed {
+      border: 2px solid #30363d;
+      border-radius: 10px;
+      width: 100%;
+      max-height: 480px;
+      object-fit: cover;
+      background: #000;
+    }
+
+    /* ── Badge colours per event type ── */
+    .badge-motion          { background-color: #f97316; }
+    .badge-audio           { background-color: #3b82f6; }
+    .badge-yolo            { background-color: #8b5cf6; }
+    .badge-high_confidence { background-color: #ef4444; }
+    .badge-manual_snapshot { background-color: #10b981; }
+    .badge-object          { background-color: #eab308; }
+    .badge-face            { background-color: #10b981; }
+    .badge-intruder        { background-color: #dc2626; }
+    .badge-clip            { background-color: #6366f1; }
+
+    /* ── Snapshot modal ── */
+    #snapImg { max-width: 100%; border-radius: 8px; }
+
+    /* ── Footer ── */
+    footer { border-top: 1px solid #30363d; color: #6e7681; font-size: .8rem; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navbar ─────────────────────────────────────────────────────────────── -->
+<nav class="navbar navbar-expand-lg navbar-dark" style="background:#161b22; border-bottom:1px solid #30363d;">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('dashboard') }}">
+      <i class="fa-solid fa-shield-halved me-2" style="color:#58a6ff;"></i>
+      <span>AI Security</span>
+    </a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+            data-bs-target="#navLinks">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="navLinks">
+      <ul class="navbar-nav me-auto">
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='dashboard' %}active{% endif %}"
+             href="{{ url_for('dashboard') }}">
+            <i class="fa-solid fa-gauge me-1"></i>Dashboard
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='events' %}active{% endif %}"
+             href="{{ url_for('events') }}">
+            <i class="fa-solid fa-list me-1"></i>Events
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='status' %}active{% endif %}"
+             href="{{ url_for('status') }}">
+            <i class="fa-solid fa-heart-pulse me-1"></i>Health
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='clips' %}active{% endif %}"
+             href="{{ url_for('clips') }}">
+            <i class="fa-solid fa-film me-1"></i>Clips
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if request.endpoint=='faces' %}active{% endif %}"
+             href="{{ url_for('faces') }}">
+            <i class="fa-solid fa-user-check me-1"></i>Faces
+          </a>
+        </li>
+      </ul>
+
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item">
+          <span class="nav-link text-secondary">
+            <i class="fa-solid fa-user me-1"></i>{{ session.get('logged_in') and 'admin' or '' }}
+          </span>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link text-danger" href="{{ url_for('logout') }}">
+            <i class="fa-solid fa-right-from-bracket me-1"></i>Logout
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Page content ───────────────────────────────────────────────────────── -->
+<main class="container-fluid py-4 px-4">
+  {% block content %}{% endblock %}
+</main>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer class="text-center py-3">
+  AI-Based Smart Home Security &nbsp;·&nbsp; Sprint 4 &nbsp;·&nbsp;
+  Local Deployment
+</footer>
+
+<!-- Bootstrap 5 JS bundle (includes Popper) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

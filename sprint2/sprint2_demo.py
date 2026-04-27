@@ -185,7 +185,7 @@ CAMERA_INDEX = None
 print("[INIT] Scanning cameras...")
 _available = []
 for _i in range(6):
-    _t = cv2.VideoCapture(_i, cv2.CAP_AVFOUNDATION)
+    _t = cv2.VideoCapture(_i)
     if _t.isOpened():
         _w = int(_t.get(cv2.CAP_PROP_FRAME_WIDTH))
         _h = int(_t.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -204,7 +204,7 @@ print(f"[INIT] Using camera index {CAMERA_INDEX}  "
       f"(change CAMERA_INDEX at top of file if wrong)\n")
 
 print("[INIT] Starting camera...")
-cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_AVFOUNDATION)
+cap = cv2.VideoCapture(CAMERA_INDEX)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 cap.set(cv2.CAP_PROP_FPS, 30)
